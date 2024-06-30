@@ -66,16 +66,15 @@ if game == "Hornes and Reads":
             print("It's a draw")
             break
 
-
-print(
-    f"""
+    print(
+        f"""
 {a1 or X} | {b1 or X} | {c1 or X}
 {a2 or X} | {b2 or X} | {c2 or X}
 {a3 or X} | {b3 or X} | {c3 or X}
 """
-)
+    )
 
-if game == "LEGO Harry Potter":
+elif game == "LEGO Harry Potter":
     print(
         """
 AVADA KADAVRA, you are dead!
