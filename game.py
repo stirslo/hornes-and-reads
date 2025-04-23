@@ -68,6 +68,7 @@ class GameServer:
         print(f"Server started on {host}:{port}")
         self.clients = []
         self.game = Game()
+        self.lock = threading.Lock()  # Synchronize turns
 
     def handle_client(self, client, player):
         client.sendall(f"Welcome Player {player}!\n".encode())
@@ -81,39 +82,40 @@ class GameServer:
             if current_player != player:
                 continue
 
-            client.sendall("Your turn! Enter your move (e.g., a1, b2):\n".encode())
-            move = client.recv(1024).decode().strip()
+            with self.lock:  # Ensure only one player can make a move at a time
+                client.sendall("Your turn! Enter your move (e.g., a1, b2):\n".encode())
+                move = client.recv(1024).decode().strip()
 
-            if not self.game.make_move(player, move):
-                client.sendall("Invalid move. Try again.\n".encode())
-                continue
+                if not self.game.make_move(player, move):
+                    client.sendall("Invalid move. Try again.\n".encode())
+                    continue
 
-            # Broadcast the board state to all players
-            board = self.game.board_state()
-            for c in self.clients:
-                c.sendall(f"Player {player} made a move: {move}\n{board}\n".encode())
-
-            # Check for a winner or draw
-            if self.game.winner(player):
+                # Broadcast the board state to all players
+                board = self.game.board_state()
                 for c in self.clients:
-                    c.sendall(f"Player {player} wins!\n".encode())
-                break
-            elif all(
-                [
-                    self.game.a1,
-                    self.game.a2,
-                    self.game.a3,
-                    self.game.b1,
-                    self.game.b2,
-                    self.game.b3,
-                    self.game.c1,
-                    self.game.c2,
-                    self.game.c3,
-                ]
-            ):
-                for c in self.clients:
-                    c.sendall("It's a draw!\n".encode())
-                break
+                    c.sendall(f"Player {player} made a move: {move}\n{board}\n".encode())
+
+                # Check for a winner or draw
+                if self.game.winner(player):
+                    for c in self.clients:
+                        c.sendall(f"Player {player} wins!\n".encode())
+                    break
+                elif all(
+                    [
+                        self.game.a1,
+                        self.game.a2,
+                        self.game.a3,
+                        self.game.b1,
+                        self.game.b2,
+                        self.game.b3,
+                        self.game.c1,
+                        self.game.c2,
+                        self.game.c3,
+                    ]
+                ):
+                    for c in self.clients:
+                        c.sendall("It's a draw!\n".encode())
+                    break
 
         client.close()
 
