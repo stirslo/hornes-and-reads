@@ -78,28 +78,30 @@ class GameServer:
         while len(self.clients) < 2:
             pass  # Wait for the second player to connect
 
-        for current_player in itertools.cycle([1, 2]):
-            if current_player != player:
-                continue
+    def start_game(self):
+        turn = itertools.cycle([1, 2])  # Centralized turn management
+        while True:
+            current_player = next(turn)
+            client = self.clients[current_player - 1]
 
             with self.lock:  # Ensure only one player can make a move at a time
                 client.sendall("Your turn! Enter your move (e.g., a1, b2):\n".encode())
                 move = client.recv(1024).decode().strip()
 
-                if not self.game.make_move(player, move):
+                if not self.game.make_move(current_player, move):
                     client.sendall("Invalid move. Try again.\n".encode())
                     continue
 
                 # Broadcast the board state to all players
                 board = self.game.board_state()
                 for c in self.clients:
-                    c.sendall(f"Player {player} made a move: {move}\n{board}\n".encode())
+                    c.sendall(f"Player {current_player} made a move: {move}\n{board}\n".encode())
 
                 # Check for a winner or draw
-                if self.game.winner(player):
+                if self.game.winner(current_player):
                     for c in self.clients:
-                        c.sendall(f"Player {player} wins!\n".encode())
-                    break
+                        c.sendall(f"Player {current_player} wins!\n".encode())
+                    return
                 elif all(
                     [
                         self.game.a1,
@@ -115,9 +117,7 @@ class GameServer:
                 ):
                     for c in self.clients:
                         c.sendall("It's a draw!\n".encode())
-                    break
-
-        client.close()
+                    return
 
     def start(self):
         print("Waiting for players to connect...")
@@ -127,6 +127,9 @@ class GameServer:
             player = len(self.clients)
             print(f"Player {player} connected from {addr}")
             threading.Thread(target=self.handle_client, args=(client, player)).start()
+
+        # Start the game after both players have connected
+        self.start_game()
 
 
 if __name__ == "__main__":
