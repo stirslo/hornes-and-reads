@@ -85,12 +85,15 @@ class GameServer:
             client = self.clients[current_player - 1]
 
             with self.lock:  # Ensure only one player can make a move at a time
-                client.sendall("Your turn! Enter your move (e.g., a1, b2):\n".encode())
-                move = client.recv(1024).decode().strip()
+                while True:  # Keep prompting the current player until a valid move is made
+                    client.sendall("Your turn! Enter your move (e.g., a1, b2):\n".encode())
+                    move = client.recv(1024).decode().strip()
 
-                if not self.game.make_move(current_player, move):
-                    client.sendall("Invalid move. Try again.\n".encode())
-                    continue
+                    if not self.game.make_move(current_player, move):
+                        # Notify the current player of the invalid move
+                        client.sendall("Invalid move. Try again.\n".encode())
+                        continue  # Prompt the same player again
+                    break  # Exit the loop once a valid move is made
 
                 # Broadcast the board state to all players
                 board = self.game.board_state()
