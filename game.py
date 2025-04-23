@@ -1,3 +1,5 @@
+import socket
+import threading
 import itertools
 
 X = "X"
@@ -47,45 +49,92 @@ class Game:
         elif self.c3 is None and move == "c3":
             self.c3 = player
         else:
-            print("invalid move")
             return False
         return True
 
-    def play(self):
-
-        for player in itertools.cycle([1, 2]):
-            while True:
-                move = input(f"player {player}? ")
-                if self.make_move(player, move):
-                    break
-            if self.winner(player):
-                print(f"player {player} wins!")
-                break
-            elif all(
-                [
-                    self.a1,
-                    self.a2,
-                    self.a3,
-                    self.b1,
-                    self.b2,
-                    self.b3,
-                    self.c1,
-                    self.c2,
-                    self.c3,
-                ]
-            ):
-                print("It's a draw")
-                break
-
-        print(
-            f"""
+    def board_state(self):
+        return f"""
 {self.a1 or X} | {self.b1 or X} | {self.c1 or X}
 {self.a2 or X} | {self.b2 or X} | {self.c2 or X}
 {self.a3 or X} | {self.b3 or X} | {self.c3 or X}
 """
-        )
+
+
+class GameServer:
+    def __init__(self, host="0.0.0.0", port=12345):
+        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server.bind((host, port))
+        self.server.listen(2)
+        print(f"Server started on {host}:{port}")
+        self.clients = []
+        self.game = Game()
+        self.lock = threading.Lock()  # Synchronize turns
+
+    def handle_client(self, client, player):
+        client.sendall(f"Welcome Player {player}!\n".encode())
+        if len(self.clients) < 2:
+            client.sendall("Waiting for another player to join...\n".encode())
+
+        while len(self.clients) < 2:
+            pass  # Wait for the second player to connect
+
+    def start_game(self):
+        turn = itertools.cycle([1, 2])  # Centralized turn management
+        while True:
+            current_player = next(turn)
+            client = self.clients[current_player - 1]
+
+            with self.lock:  # Ensure only one player can make a move at a time
+                while True:  # Keep prompting the current player until a valid move is made
+                    client.sendall("Your turn! Enter your move (e.g., a1, b2):\n".encode())
+                    move = client.recv(1024).decode().strip()
+
+                    if not self.game.make_move(current_player, move):
+                        # Notify the current player of the invalid move
+                        client.sendall("Invalid move. Try again.\n".encode())
+                        continue  # Prompt the same player again
+                    break  # Exit the loop once a valid move is made
+
+                # Broadcast the board state to all players
+                board = self.game.board_state()
+                for c in self.clients:
+                    c.sendall(f"Player {current_player} made a move: {move}\n{board}\n".encode())
+
+                # Check for a winner or draw
+                if self.game.winner(current_player):
+                    for c in self.clients:
+                        c.sendall(f"Player {current_player} wins!\n".encode())
+                    return
+                elif all(
+                    [
+                        self.game.a1,
+                        self.game.a2,
+                        self.game.a3,
+                        self.game.b1,
+                        self.game.b2,
+                        self.game.b3,
+                        self.game.c1,
+                        self.game.c2,
+                        self.game.c3,
+                    ]
+                ):
+                    for c in self.clients:
+                        c.sendall("It's a draw!\n".encode())
+                    return
+
+    def start(self):
+        print("Waiting for players to connect...")
+        while len(self.clients) < 2:
+            client, addr = self.server.accept()
+            self.clients.append(client)
+            player = len(self.clients)
+            print(f"Player {player} connected from {addr}")
+            threading.Thread(target=self.handle_client, args=(client, player)).start()
+
+        # Start the game after both players have connected
+        self.start_game()
 
 
 if __name__ == "__main__":
-    game = Game()
-    game.play()
+    server = GameServer()
+    server.start()
